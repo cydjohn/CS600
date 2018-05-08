@@ -1,0 +1,6 @@
+G:\code\Cs\CS 600\FinalProject\IPRulesRegulater\IPRulesRegulater\bin\Debug\IPRulesRegulater.exe.config
+G:\code\Cs\CS 600\FinalProject\IPRulesRegulater\IPRulesRegulater\bin\Debug\IPRulesRegulater.exe
+G:\code\Cs\CS 600\FinalProject\IPRulesRegulater\IPRulesRegulater\bin\Debug\IPRulesRegulater.pdb
+G:\code\Cs\CS 600\FinalProject\IPRulesRegulater\IPRulesRegulater\obj\Debug\IPRulesRegulater.csprojResolveAssemblyReference.cache
+G:\code\Cs\CS 600\FinalProject\IPRulesRegulater\IPRulesRegulater\obj\Debug\IPRulesRegulater.exe
+G:\code\Cs\CS 600\FinalProject\IPRulesRegulater\IPRulesRegulater\obj\Debug\IPRulesRegulater.pdb
