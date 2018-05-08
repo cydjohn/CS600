@@ -64,10 +64,14 @@ def generateRules(num):
 	for j in range(0,num/8):
 		result.append(generateIP4B())
 
-	df = pd.DataFrame(result)
-	df.to_csv('test.csv')
+	# df = pd.DataFrame(result)
+	# df.to_csv('rules.csv')
+
+	with open('test.json', 'w') as outfile:  
+		json.dump(result, outfile)
 
 generateRules(100)
+
 
 
 
