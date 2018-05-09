@@ -203,46 +203,60 @@ namespace IPRulesRegulater
             {
                 //todosides 需要填充，左右都有东西的时候该怎么办
                 //第一步，分裂成一条一条的，把四角做好
-                int Scanline = r.DS;
-                int left = 0;
-                bool lefton = false;
-                int right = 0;
-                bool righton = false;
-                List<rec> recs = new List<rec>();
-                int lowerbound = Scanline;
-                //先处理下两角
-                if (savedrules[toleft[left]].DS < r.DS)
+
+                List<templine> tl = new List<templine>();
+                foreach (int i in toleft)
+                    tl.Add(new templine(Math.Max(r.DS, this.savedrules[i].DS), Math.Min(r.DE, this.savedrules[i].DE), 1, savedrules[i].SS, r.SE));
+                tl = tl.OrderBy(t => t.start).ToList();
+                List<templine> ntl = new List<templine>();
+                if (tl[0].start > r.DS)
+                    ntl.Add(new templine(r.DS, tl[0].start - 1, 2, r.SS,r.SE));
+                for (int i = 1; i < tl.Count(); i++)
+                    if (tl[i].start - tl[i - 1].end > 1)
+                        ntl.Add(new templine(tl[i - 1].end + 1, tl[i].start - 1, 2, r.SS, r.SE));
+                if (tl.Last(t => true).end < r.DE)
+                    ntl.Add(new templine(tl.Last(t => true).end + 1, r.DE, 2, r.SS, r.SE));
+                tl.AddRange(ntl);
+                tl = tl.OrderBy(t => t.start).ToList();
+
+                foreach (int i in toright)
                 {
-                    recs.Add(new rec(savedrules[toleft[left]].SS, r.SS - 1, savedrules[toleft[left]].DS, r.DS - 1));
+                    int tempDS = savedrules[i].DS;
+                    int tempDE = savedrules[i].DE;
+                    int tempSE = savedrules[i].SE;
+                    ntl = new List<templine>();
+                    foreach (templine t in tl.Where(t => t.start <= tempDE && t.end >= tempDS))
+                        if (t.start >= tempDS && t.end <= tempDE)
+                            ntl.Add(new templine(t.start, t.end, t.start, t.left, tempSE));
+                        else if (t.start >= tempDS && t.end > tempDE)
+                        {
+                            ntl.Add(new templine(t.start, tempDE, 5, t.left, tempSE));
+                            ntl.Add(new templine(tempDE + 1, t.end, t.status, t.left, t.right));
+                        }
+                        else if (t.start < tempDS && t.end <= tempDE)
+                        {
+                            ntl.Add(new templine(t.start, tempDS - 1, 1, t.left, t.right));
+                            ntl.Add(new templine(tempDS, t.end, 5, t.left, tempSE));
+                        }
+                    tl = tl.Where(t => t.end < tempDS || t.start > tempDE).ToList();
+                    tl.AddRange(ntl);
+                    tl = tl.OrderBy(t => t.start).ToList();
                 }
-                if (savedrules[toright[left]].DS < r.DS)
-                {
-                    recs.Add(new rec(r.SE + 1, savedrules[toright[right]].SE, savedrules[toright[right]].DS, r.DS - 1));
-                }
+                //现在要解决一下四角问题然后就可以走了
+                if (savedrules[toleft[0]].DS < r.DS)
+                    tl.Add(new templine(savedrules[toleft[0]].DS, r.DS - 1, 0, savedrules[toleft[0]].SS, r.SS - 1));
+                if (savedrules[toleft.Last(t=>true)].DE>r.DE)
+                    tl.Add(new templine(r.DE+1, savedrules[toleft.Last(t => true)].DE, 0, savedrules[toleft.Last(t => true)].SS, r.SS - 1));
+                if (savedrules[toright[0]].DS < r.DS)
+                    tl.Add(new templine(savedrules[toright[0]].DS, r.DS - 1, 3, r.SE+1, savedrules[toright[0]].SE));
+                if (savedrules[toright.Last(t => true)].DE > r.DE)
+                    tl.Add(new templine(r.DE + 1, savedrules[toright.Last(t => true)].DE, 3, r.SE + 1, savedrules[toright.Last(t => true)].SE));
 
-                while(Scanline<=r.DE)
-                {
-                    bool newlefton = lefton;
-                    bool newrighton = righton;
-                    if (Scanline >= savedrules[toleft[left]].DS)
-                        newlefton = true;
-                    if (Scanline >= savedrules[toright[right]].DS)
-                        newrighton = true;
-
-                }
-
-
-
-
-
-
-                Console.WriteLine("不好啦两边都有啦");
-                Console.WriteLine(r.SS.ToString() + ", " + r.SE.ToString() + ", " + r.DS.ToString() + ", " + r.DE.ToString());
-                Console.ReadLine();
+                return;
             }
             #region ifhaverightneighbor
             if (toright != null && toright.Count() != 0)
-            {//仅右侧有可续规则时怎么办
+            {//仅右侧有可续规则时怎么办todo如果右侧只有一条包住它的大规则该么办
                 int upperone = -1;
                 int lowerone = -1;
                 int uppercheckpoint = r.DE;
@@ -474,6 +488,10 @@ namespace IPRulesRegulater
         {
             public int time;
             public bool start;
+            /// <summary>
+            /// 1左边2中间3右边
+            /// </summary>
+            public int isleft;
             public int index;
             public Event(int index, int time, bool start)
             {
@@ -481,9 +499,34 @@ namespace IPRulesRegulater
                 this.time = time;
                 this.start = start;
             }
+            public Event(int index, int time, bool start, int isleft)
+            {
+                this.index = index;
+                this.time = time;
+                this.start = start;
+                this.isleft = isleft;
+            }
         }
 
-
+        class templine
+        {
+            public int start;
+            public int end;
+            public int status;
+            public int boxindex;
+            public int left;
+            public int right;
+            public bool useful;
+            public templine(int start, int end, int status, int left, int right)
+            {
+                this.start = start;
+                this.end = end;
+                this.status = status;
+                this.left = left;
+                this.right = right;
+                this.useful = true;
+            }
+        }
 
         class savedrule
         {
