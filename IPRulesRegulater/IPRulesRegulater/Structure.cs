@@ -6,185 +6,374 @@ using System.Threading.Tasks;
 
 namespace IPRulesRegulater
 {
-    class Structure
-    { }
 
     class IPRange
     {
-        public int FS;
-        public int SS;
-        public int TS;
-        public int LS;
-        public int FE;
-        public int SE;
-        public int TE;
-        public int LE;
-        public bool hasslash;
-        public int slash;
-        public int convertStart()
+        public IP StartIP;
+        public IP EndIP;
+        public IPRange(string IPString)
         {
-            return 0;//todo添加转换规则
+            this.StartIP = new IP(IPString.Replace("*", "0"));
+            this.EndIP = new IP(IPString.Replace("*", "255"));
         }
-        public int convertEnd()
+
+        public IPRange(int StartIPNum, int EndIPNum)
         {
-            return 0;//todo添加转换规则
+            this.StartIP = new IP(StartIPNum);
+            this.EndIP = new IP(EndIPNum);
+        }
+
+        public class IP
+        {
+            public int F;
+            public int S;
+            public int T;
+            public int L;
+            public bool hasslash;
+            public int slash;
+            public IP(string IPstring)
+            {
+                try {
+                    string[] sep = IPstring.Split('.');
+                    this.F = int.Parse(sep[0]);
+                    this.S = int.Parse(sep[1]);
+                    this.T = int.Parse(sep[2]);
+                    if (sep[3].Contains("/"))
+                    {
+                        this.L = int.Parse(sep[3].Split('/')[0]);
+                        this.hasslash = true;
+                        this.slash = int.Parse(sep[3].Split('/')[1]);
+                    }
+                    else
+                    {
+                        this.L = int.Parse(sep[3]);
+                        this.hasslash = false;
+                    }
+                }
+                catch {
+                    Console.Write("Wrong IP string. " + IPstring);
+                    Console.ReadLine();
+                }
+            }
+
+            public IP(int num)
+            {
+                int res = num;
+                this.F = res / 16777216;
+                res = res - F * 16777216;
+                this.S = res / 65536;
+                res = res - S * 65536;
+                this.T = res / 256;
+                res = res - T * 256;
+                this.L = res;
+//todo这里同样没有考虑slash的情况
+            }
+            public int toInt()
+            {
+                int re = ((this.F * 256 + this.S) * 256 + this.T) * 256 + this.L;
+                return re;//todo添加转换规则，将一个IP地址换为坐标中的一个数字。还需要把slash编进去
+            }
+
+            
         }
 
     }
+
     class rule
     {
-        public IPRange SourceIP;
+        public IPRange SourceIPRange;
 
-        public IPRange DestIP;
+        public IPRange DestIPRange;
 
         public bool Allowed;
 
-        //public int[] toArries()
-        //{
-        //    int[] res = new int[20];
-        //    res[0] = this.SourceIP.FS;
-        //    res[1] = this.SourceIP.SE;
-        //    res[2] = 
+        public rule(string SourceIPR, string DestIPR, string allowed)
+        {
+            this.SourceIPRange = new IPRange(SourceIPR);
+            this.DestIPRange = new IPRange(DestIPR);
 
-        //}
+            if (allowed.ToLower() == "allow")
+                this.Allowed = true;
+            else
+                if (allowed.ToLower() == "block" ||  allowed.ToLower() == "deny")
+                this.Allowed = false;
+            else
+            {
+                Console.WriteLine("Wrong rule. " + allowed);
+            }
+        }
+
+        public rule(int SS, int SE, int DS, int DE, bool allowed)
+        {
+            this.SourceIPRange = new IPRange(SS, SE);
+            this.DestIPRange = new IPRange(DS, DE);
+            this.Allowed = allowed;
+        }
 
     }
 
     class Box
     {
-        List<savedrule> savedrules;
+        private List<savedrule> savedrules;
 
-        public ETREE SourceIPTree;
+        private  ETREE SourceIPTree;
 
-        public ETREE ReverseSourceIPTree;
+        private  ETREE ReverseSourceIPTree;
 
-        public ETREE DestIPTree;//todo 不用public吧
+        private ETREE DestIPTree;//todo 不用public吧
 
         public void AddRule(rule newrule, int boxindex = 0, bool ischecking = false)
         {
 
-            int SS = newrule.SourceIP.convertStart();
-            int SE = newrule.SourceIP.convertEnd();
-            int DS = newrule.DestIP.convertStart();
-            int DE = newrule.DestIP.convertEnd();
+            int SS = newrule.SourceIPRange.StartIP.toInt();
+            int SE = newrule.SourceIPRange.EndIP.toInt();
+            int DS = newrule.DestIPRange.StartIP.toInt();
+            int DE = newrule.DestIPRange.EndIP.toInt();
 
 
 
             //检查有没有重复，先列出要重的
-            List<int> Intervaled = FindIntevals(boxindex, SS, SE, DS, DE);
+            List<int> Intervaled = FindIntevals(SS, SE, DS, DE);
 
             //一一调整校对，得出需要添加的裂解的box，以及哪些需要留观后效
             ruledivider Newrules = ChecktheseBoxes(Intervaled, SS, SE, DS, DE);
 
-            //先在两个sourceIP树里检索一遍
-            foreach (rec r in Newrules.finishedrecs)
-            {
-                List<int> toright = this.SourceIPTree.connectedrecs(r.SE);
-                toright = toright.Where(i => this.savedrules[i].DS <= r.DE && this.savedrules[i].DE >= r.DS && this.savedrules[i].allowed == newrule.Allowed).ToList();
-                List<int> toleft = this.ReverseSourceIPTree.connectedrecs(r.SS);
-                toleft = toleft.Where(i => this.savedrules[i].DS <= r.DE && this.savedrules[i].DE >= r.DS && this.savedrules[i].allowed == newrule.Allowed).ToList();
-                if ((toright != null || toright.Count() != 0) && (toleft != null || toleft.Count() != 0))
-                {
-                    //todo
-                    continue;
-                }
-                #region ifhaverightneighbor
-                if (toright != null || toright.Count() != 0)
-                {
-                    int upperone = -1;
-                    int lowerone = -1;
-                    int uppercheckpoint = r.DE;
-                    int lowercheckpoint = r.DS;
-                    foreach (int i in toright)
-                    {
-                        if (this.savedrules[i].DE >= r.DE)
-                            upperone = i;
-                        if (this.savedrules[i].DS <= r.DS)
-                            lowerone = i;
-                    }
-
-                    if (upperone != -1)
-                    {
-                        uppercheckpoint = this.savedrules[upperone].DS - 1;
-                        if (this.savedrules[upperone].DS > r.DS)
-                        {
-                            this.savedrules[upperone].DS = r.DE + 1;
-                            this.savedrules[upperone].DestIPTIndex = this.DestIPTree.changeStartPoint(this.savedrules[upperone].index, this.savedrules[upperone].RSourceIPTIndex, r.DS + 1, this.savedrules[upperone].DE);
-                        }
-                        else
-                            delete(upperone);
-                        AddRule(r.SS, this.savedrules[upperone].SE, uppercheckpoint + 1, r.DE, newrule.Allowed);
-                    }
-
-                    if (lowerone != -1)
-                    {
-                        lowercheckpoint = this.savedrules[lowerone].DE + 1;
-                        if (this.savedrules[lowerone].DS < r.DS)
-                        {
-                            this.savedrules[lowerone].DE = r.DS - 1;
-                            this.DestIPTree.nodes[savedrules[lowerone].DestIPTIndex].Boxes.Remove(lowerone);
-                            this.DestIPTree.nodes[savedrules[lowerone].DestIPTIndex].Boxes.Add(lowerone, r.DS - 1);
-                        }
-                        else
-                            delete(lowerone);
-                        AddRule(r.SS, this.savedrules[lowerone].SE, r.DS, lowercheckpoint - 1, newrule.Allowed);
-                    }
-
-                    List<line> linesegs = new List<line>();
-                    linesegs.Add(new line(lowercheckpoint, uppercheckpoint));
-
-                    foreach (int i in toright)
-                    {
-                        if (i == lowerone || i == upperone) continue;
-                        int a = this.savedrules[i].DS;
-                        int b = this.savedrules[i].DE;
-                        int tempindex = -1;
-                        for (int tempi = 1; tempi < linesegs.Count(); tempi++)
-                            if (linesegs[tempi].startpoint <= a && linesegs[tempi].endpoint >= b)
-                                tempindex = tempi;
-                        if (linesegs[tempindex].startpoint < a)
-                            linesegs.Add(new line(linesegs[tempindex].startpoint, a - 1));
-                        if (linesegs[tempindex].endpoint > b)
-                            linesegs.Add(new line(b + 1, linesegs[tempindex].endpoint));
-                        linesegs.RemoveAt(tempindex);
-                        AddRule(r.SS, this.savedrules[i].SE, a, b, newrule.Allowed);
-                        delete(i);
-                    }
-                    foreach (line l in linesegs)
-                        AddRule(r.SS, r.SE, l.startpoint, l.endpoint, newrule.Allowed);
-                    continue;
-                }
-                #endregion ifhaverightneighbor
-
-                if (toleft != null || toleft.Count() != 0)
-                {
-                    continue;
-                }
-                AddRule(r.SS, r.SE, r.DS, r.DE, newrule.Allowed);
-
-            }
+            //对每一个，分情况加载
+            foreach(rec r in Newrules.finishedrecs)
+            AddDistinctRules(r, newrule.Allowed);
+            
         }
 
         private void AddRule(int SS, int SE, int DS, int DE, bool allowed)
         {
             savedrule newr = new savedrule(SS, SE, DS, DE, allowed, this.savedrules.Count());
             int index = -1;
-            this.SourceIPTree.addnode(SS, SE, newr.index, out index);
+            List<int> exrules = SourceIPTree.connectedrecs(SE);
+            if (exrules != null)
+            {
+                int u = -1;
+                int l = -1;
+                foreach (int e in exrules)
+                {
+                    if (savedrules[e].DS == DE + 1) u = e;
+                    if (savedrules[e].DE == DS - 1) l = e;
+                }
+                if (u > 0 && l > 0)
+                {
+                    changeDE(l, savedrules[u].DE);
+                    delete(u);
+                    return;
+                }
+                if (u > 0)
+                {
+                    changeDS(u, DS);
+                    return;
+                }
+                if (l > 0)
+                {
+                    changeDE(l, DE);
+                    return;
+                }
+            }
+            SourceIPTree.addnode(SS, SE, newr.index, out index);
             newr.SourceIPTIndex = index;
-            this.ReverseSourceIPTree.addnode(SE, SS, newr.index, out index);
+            ReverseSourceIPTree.addnode(SE, SS, newr.index, out index);
             newr.RSourceIPTIndex = index;
-            this.DestIPTree.addnode(DS, DE, newr.index, out index);
+            DestIPTree.addnode(DS, DE, newr.index, out index);
             newr.DestIPTIndex = index;
             this.savedrules.Add(newr);
         }
 
-        private List<int> FindIntevals(int BoxIndex, int SS, int SE, int DS, int DE)
+        private void AddDistinctRules(rec r, bool allowed)
         {
-            List<int> SourceIntervals = this.SourceIPTree.intervals(SS, SE);
+            //先在两棵树中查找，把紧挨着的找出来，并从上到下排序
+            List<int> toright = SourceIPTree.connectedrecs(r.SE);
+            if (toright != null)
+            {
+                toright = toright.Where(i => this.savedrules[i].DS <= r.DE && this.savedrules[i].DE >= r.DS && this.savedrules[i].allowed == allowed).ToList();
+                toright = toright.OrderBy(t => this.savedrules[t].DS).ToList();
+            }
+            List<int> toleft = ReverseSourceIPTree.connectedrecs(r.SS);
+            if (toleft != null)
+            {
+                toleft = toleft.Where(i => this.savedrules[i].DS <= r.DE && this.savedrules[i].DE >= r.DS && this.savedrules[i].allowed == allowed).ToList();
+                toleft = toleft.OrderBy(t => this.savedrules[t].DS).ToList();
+            }
+            if ((toright != null && toright.Count() != 0) && (toleft != null && toleft.Count() != 0))
+            {
+                //todosides 需要填充，左右都有东西的时候该怎么办
+                //第一步，分裂成一条一条的，把四角做好
+                int Scanline = r.DS;
+                int left = 0;
+                bool lefton = false;
+                int right = 0;
+                bool righton = false;
+                List<rec> recs = new List<rec>();
+                int lowerbound = Scanline;
+                //先处理下两角
+                if (savedrules[toleft[left]].DS < r.DS)
+                {
+                    recs.Add(new rec(savedrules[toleft[left]].SS, r.SS - 1, savedrules[toleft[left]].DS, r.DS - 1));
+                }
+                if (savedrules[toright[left]].DS < r.DS)
+                {
+                    recs.Add(new rec(r.SE + 1, savedrules[toright[right]].SE, savedrules[toright[right]].DS, r.DS - 1));
+                }
+
+                while(Scanline<=r.DE)
+                {
+                    bool newlefton = lefton;
+                    bool newrighton = righton;
+                    if (Scanline >= savedrules[toleft[left]].DS)
+                        newlefton = true;
+                    if (Scanline >= savedrules[toright[right]].DS)
+                        newrighton = true;
+
+                }
+
+
+
+
+
+
+                Console.WriteLine("不好啦两边都有啦");
+                Console.WriteLine(r.SS.ToString() + ", " + r.SE.ToString() + ", " + r.DS.ToString() + ", " + r.DE.ToString());
+                Console.ReadLine();
+            }
+            #region ifhaverightneighbor
+            if (toright != null && toright.Count() != 0)
+            {//仅右侧有可续规则时怎么办
+                int upperone = -1;
+                int lowerone = -1;
+                int uppercheckpoint = r.DE;
+                int lowercheckpoint = r.DS;
+                foreach (int i in toright)
+                {
+                    if (this.savedrules[i].DE >= r.DE)
+                        upperone = i;
+                    if (this.savedrules[i].DS <= r.DS)
+                        lowerone = i;
+                }
+
+                if (upperone != -1)
+                {
+                    uppercheckpoint = this.savedrules[upperone].DS - 1;
+                    if (this.savedrules[upperone].DS > r.DS)
+                    {
+                        this.savedrules[upperone].DS = r.DE + 1;
+                        this.savedrules[upperone].DestIPTIndex = DestIPTree.changeStartPoint(this.savedrules[upperone].index, this.savedrules[upperone].DestIPTIndex, r.DS + 1);
+                    }
+                    else
+                        delete(upperone);
+                    AddRule(r.SS, this.savedrules[upperone].SE, uppercheckpoint + 1, r.DE, allowed);
+                }
+
+                if (lowerone != -1)
+                {
+                    lowercheckpoint = this.savedrules[lowerone].DE + 1;
+                    if (this.savedrules[lowerone].DS < r.DS)
+                    {
+                        this.savedrules[lowerone].DE = r.DS - 1;
+                        DestIPTree.changeEndPoint(lowerone, this.savedrules[lowerone].DestIPTIndex, r.DS - 1);
+                    }
+                    else
+                        delete(lowerone);
+                    AddRule(r.SS, this.savedrules[lowerone].SE, r.DS, lowercheckpoint - 1, allowed);
+                }
+
+                List<line> linesegs = new List<line>();
+                linesegs.Add(new line(lowercheckpoint, uppercheckpoint));
+
+                foreach (int i in toright)
+                {
+                    if (i == lowerone || i == upperone) continue;
+                    int a = this.savedrules[i].DS;
+                    int b = this.savedrules[i].DE;
+                    int tempindex = -1;
+                    for (int tempi = 1; tempi < linesegs.Count(); tempi++)
+                        if (linesegs[tempi].startpoint <= a && linesegs[tempi].endpoint >= b)
+                            tempindex = tempi;
+                    if (linesegs[tempindex].startpoint < a)
+                        linesegs.Add(new line(linesegs[tempindex].startpoint, a - 1));
+                    if (linesegs[tempindex].endpoint > b)
+                        linesegs.Add(new line(b + 1, linesegs[tempindex].endpoint));
+                    linesegs.RemoveAt(tempindex);
+                    AddRule(r.SS, this.savedrules[i].SE, a, b, allowed);
+                    delete(i);
+                }
+                foreach (line l in linesegs)
+                    AddRule(r.SS, r.SE, l.startpoint, l.endpoint, allowed);
+                return;
+            }
+            #endregion ifhaverightneighbor
+
+            #region ifhaveleftneighbor
+            if (toleft != null && toleft.Count() != 0)
+            {
+                int i = 0;
+                int ScanLine = r.DS;
+                //检查第一个是否会越界，ds低于r的ds
+                if (savedrules[toleft[i]].DS < r.DS)
+                {
+                    changeDE(toleft[i], r.DS - 1);
+                    AddRule(savedrules[toleft[i]].SS, r.SE, r.DS, savedrules[toleft[i]].DE, allowed);
+                    i++;
+                    ScanLine = savedrules[toleft[i]].DE+1;
+                }
+                //对中间的，先弄gap里的，再弄共存的
+                while (i<toleft.Count() && savedrules[toleft[i]].DE<=r.DE)
+                {
+                    if(savedrules[toleft[i]].DS> ScanLine)
+                    {
+                        AddRule(r.SS, r.SE, ScanLine, savedrules[i].DS - 1, allowed);
+                        ScanLine = savedrules[toleft[i]].DS;
+                    }
+                    changeSE(toleft[i], r.SE);
+                    i++;
+                    ScanLine = savedrules[toleft[i]].DE+1;
+                }
+                //如果没有超界的就算了
+                if (ScanLine > r.DE) return;
+                if (i == toleft.Count() - 1)
+                {
+                    AddRule(r.SS, r.SE, ScanLine, r.DE, allowed);
+                }
+                else
+                {
+                    if (savedrules[toleft[i]].DS > ScanLine)
+                    {
+                        AddRule(r.SS, r.SE, ScanLine, savedrules[i].DS - 1, allowed);
+                        ScanLine = savedrules[toleft[i]].DS;
+                    }
+                    AddRule(savedrules[toleft[i]].SS, r.SE, ScanLine, r.DE, allowed);
+                    changeDS(toleft[i], r.DE + 1);
+                }
+                return;
+            }
+            #endregion ifhaveleftneighbor
+
+            #region ifnoneighbor
+            AddRule(r.SS, r.SE, r.DS, r.DE, allowed);
+            #endregion ifnoneighbor
+            return;
+
+        }
+
+        /// <summary>
+        /// 利用SouceIPT和DestIPT找到所交叠的矩形index
+        /// </summary>
+        /// <param name="SS"></param>
+        /// <param name="SE"></param>
+        /// <param name="DS"></param>
+        /// <param name="DE"></param>
+        /// <returns></returns>
+        private List<int> FindIntevals(int SS, int SE, int DS, int DE)
+        {
+            List<int> SourceIntervals = SourceIPTree.intervals(SS, SE);
             List<int> intervals = new List<int>();
             foreach (int ind in SourceIntervals)
                 this.savedrules[ind].marked = true;
-            foreach (int ind in this.DestIPTree.intervals(DS, DE))
+            foreach (int ind in DestIPTree.intervals(DS, DE))
                 if (this.savedrules[ind].marked)
                     intervals.Add(ind);
             foreach (int ind in SourceIntervals)
@@ -197,12 +386,8 @@ namespace IPRulesRegulater
             List<Event> events = new List<Event>();
             foreach (int i in recindexes)
             {
-                if (this.savedrules[i].SS <= SS)
-                    events.Add(new Event(i, SS, true));
-                else events.Add(new Event(i, this.savedrules[i].SS, true));
-                if (this.savedrules[i].SE <= SE)
-                    events.Add(new Event(i, this.savedrules[i].SE, false));
-                else events.Add(new Event(i, SE, false));
+                events.Add(new Event(i, Math.Max(this.savedrules[i].SS, SS), true));
+                events.Add(new Event(i, Math.Min(this.savedrules[i].SE, SE), false));
             }
             events = events.OrderBy(e => e.time).ToList();
             ruledivider divider = new ruledivider(SS, SE, DS, DE);
@@ -222,65 +407,56 @@ namespace IPRulesRegulater
             int last = this.savedrules.Count();
             while (this.savedrules[last].empty)
             {
-                this.SourceIPTree.nodes[this.savedrules[last].SourceIPTIndex].Boxes.Remove(last);
-                this.ReverseSourceIPTree.nodes[this.savedrules[last].RSourceIPTIndex].Boxes.Remove(last);
-                this.DestIPTree.nodes[this.savedrules[last].DestIPTIndex].Boxes.Remove(last);
+                SourceIPTree.nodes[this.savedrules[last].SourceIPTIndex].Boxes.Remove(last);
+                ReverseSourceIPTree.nodes[this.savedrules[last].RSourceIPTIndex].Boxes.Remove(last);
+                DestIPTree.nodes[this.savedrules[last].DestIPTIndex].Boxes.Remove(last);
                 this.savedrules.RemoveAt(last);
                 last--;
             }
 
-            this.SourceIPTree.nodes[this.savedrules[index].SourceIPTIndex].Boxes.Remove(index);
-            this.ReverseSourceIPTree.nodes[this.savedrules[index].RSourceIPTIndex].Boxes.Remove(index);
-            this.DestIPTree.nodes[this.savedrules[index].DestIPTIndex].Boxes.Remove(index);
+            SourceIPTree.nodes[this.savedrules[index].SourceIPTIndex].Boxes.Remove(index);
+            ReverseSourceIPTree.nodes[this.savedrules[index].RSourceIPTIndex].Boxes.Remove(index);
+            DestIPTree.nodes[this.savedrules[index].DestIPTIndex].Boxes.Remove(index);
 
             this.savedrules[index].copy(this.savedrules[last]);
 
-            this.SourceIPTree.nodes[this.savedrules[index].SourceIPTIndex].Boxes.Remove(last);
-            this.SourceIPTree.nodes[this.savedrules[index].SourceIPTIndex].Boxes.Add(index, this.savedrules[index].SE);
+            SourceIPTree.nodes[this.savedrules[index].SourceIPTIndex].Boxes.Remove(last);
+            SourceIPTree.nodes[this.savedrules[index].SourceIPTIndex].Boxes.Add(index, this.savedrules[index].SE);
 
-            this.ReverseSourceIPTree.nodes[this.savedrules[index].RSourceIPTIndex].Boxes.Remove(last);
-            this.ReverseSourceIPTree.nodes[this.savedrules[index].RSourceIPTIndex].Boxes.Add(index, this.savedrules[index].SS);
+            ReverseSourceIPTree.nodes[this.savedrules[index].RSourceIPTIndex].Boxes.Remove(last);
+            ReverseSourceIPTree.nodes[this.savedrules[index].RSourceIPTIndex].Boxes.Add(index, this.savedrules[index].SS);
 
-            this.DestIPTree.nodes[this.savedrules[index].DestIPTIndex].Boxes.Remove(last);
-            this.DestIPTree.nodes[this.savedrules[index].DestIPTIndex].Boxes.Add(index, this.savedrules[index].DE);
+            DestIPTree.nodes[this.savedrules[index].DestIPTIndex].Boxes.Remove(last);
+            DestIPTree.nodes[this.savedrules[index].DestIPTIndex].Boxes.Add(index, this.savedrules[index].DE);
 
             this.savedrules.RemoveAt(last);
         }
 
-        class Box
+        private void changeSS(int ruleindex, int newSS)
+        {//todo改过之后要上下检查
+            int oldSS = savedrules[ruleindex].SS;
+            savedrules[ruleindex].SS = newSS;
+            savedrules[ruleindex].SourceIPTIndex = SourceIPTree.changeStartPoint(ruleindex, savedrules[ruleindex].SourceIPTIndex, newSS);
+            ReverseSourceIPTree.changeEndPoint(ruleindex, savedrules[ruleindex].RSourceIPTIndex, newSS);
+        }
+        private void changeSE(int ruleindex, int newSE)
+        {//todo改过之后要上下检查
+            int oldSE = savedrules[ruleindex].SE;
+            savedrules[ruleindex].SE = newSE;
+            savedrules[ruleindex].RSourceIPTIndex = ReverseSourceIPTree.changeStartPoint(ruleindex, savedrules[ruleindex].RSourceIPTIndex, newSE);
+            SourceIPTree.changeEndPoint(ruleindex, savedrules[ruleindex].SourceIPTIndex, newSE);
+        }
+        private void changeDS(int ruleindex, int newDS)
         {
-            public List<int> subBoxes;
-            public ETREE SourceIPTree;
-            public ETREE DestIPTree;
-            public int Level;
-            public int SS;
-            public int SE;
-            public int DS;
-            public int DE;
-            public List<int> From;
-            public bool mark;
-
-            public void add(rule newrule)
-            {
-                if (this.Level == 4) return;
-
-            }
-
-
-
-            public Box(int SS, int SE, int DS, int DE, int Level)
-            {
-                this.SS = SS;
-                this.SE = SE;
-                this.DS = DS;
-                this.DE = DE;
-                this.Level = Level;
-                this.subBoxes = new List<int>();
-                this.SourceIPTree = new ETREE();
-                this.DestIPTree = new ETREE();
-                this.mark = false;
-            }
-
+            int oldDS = savedrules[ruleindex].DS;
+            savedrules[ruleindex].DS = newDS;
+            savedrules[ruleindex].DestIPTIndex = DestIPTree.changeStartPoint(ruleindex, savedrules[ruleindex].DestIPTIndex, newDS);
+        }
+        private void changeDE(int ruleindex, int newDE)
+        {
+            int oldDE = savedrules[ruleindex].DE;
+            savedrules[ruleindex].DE = newDE;
+            DestIPTree.changeEndPoint(ruleindex, savedrules[ruleindex].DestIPTIndex, newDE);
         }
 
         class line
@@ -307,24 +483,7 @@ namespace IPRulesRegulater
             }
         }
 
-        class rec
-        {
-            public int SS;
-            public int SE;
-            public int DS;
-            public int DE;
-            public bool end;
-            //public bool marked;
-            public bool allowed;
-            public rec(int SS, int DS, int DE)
-            {
-                this.SS = SS;
-                this.DS = DS;
-                this.DE = DE;
-                this.end = false;
-            }
 
-        }
 
         class savedrule
         {
@@ -346,6 +505,7 @@ namespace IPRulesRegulater
                 this.DS = DS;
                 this.DE = DE;
                 this.allowed = allowed;
+                this.marked = false;
                 this.index = index;
                 this.empty = false;
             }
@@ -362,8 +522,37 @@ namespace IPRulesRegulater
                 this.RSourceIPTIndex = saved.RSourceIPTIndex;
                 this.DestIPTIndex = saved.DestIPTIndex;
             }
+
         }
 
+        class rec
+        {
+            public int SS;
+            public int SE;
+            public int DS;
+            public int DE;
+            public bool end;
+            //public bool marked;
+            //public bool allowed;
+            public rec(int SS, int DS, int DE)
+            {
+                this.SS = SS;
+                this.DS = DS;
+                this.DE = DE;
+                this.end = false;
+            }
+
+            public rec(int SS,int SE, int DS, int DE)
+            {
+                this.SS = SS;
+                this.SE = SE;
+                this.DS = DS;
+                this.DE = DE;
+
+            }
+
+
+        }
 
         class ruledivider
         {
@@ -371,9 +560,15 @@ namespace IPRulesRegulater
             int SE;
             int DS;
             int DE;
-            List<rec> rectangles;
-            public List<rec> finishedrecs;
+            List<rec> rectangles = new List<rec>();
+            public List<rec> finishedrecs = new List<rec>();
 
+            /// <summary>
+            /// 这个函数表述的是遇到新的已存规则该怎么做
+            /// </summary>
+            /// <param name="intervalDS"></param>
+            /// <param name="intervalDE"></param>
+            /// <param name="Scanline"></param>
             public void addinterval(int intervalDS, int intervalDE, int Scanline)
             {
                 List<rec> newrecs = new List<rec>();
@@ -392,6 +587,12 @@ namespace IPRulesRegulater
                 rectangles = rectangles.Where(r => !r.end).ToList();
             }
 
+            /// <summary>
+            /// 当一个已存规则扫描完了该怎么做
+            /// </summary>
+            /// <param name="intervalDS"></param>
+            /// <param name="intervalDE"></param>
+            /// <param name="Scanline"></param>
             public void deleteinterval(int intervalDS, int intervalDE, int Scanline)
             {
                 rectangles.Add(new rec(Scanline + 1, intervalDS, intervalDE));
@@ -418,9 +619,17 @@ namespace IPRulesRegulater
 
         }
 
+        public Box()
+        {
+            this.savedrules = new List<savedrule>();
+            this.SourceIPTree = new ETREE();
+            this.ReverseSourceIPTree = new ETREE();
+            this.DestIPTree = new ETREE();
+            
+        }
+
+
     }
-
-
 
 
     class ETREE
@@ -435,12 +644,18 @@ namespace IPRulesRegulater
             this.RootNodeIndex = -1;
         }
 
+        /// <summary>
+        /// 输入前后点，返回有重叠的线段所带的savedrule的index
+        /// </summary>
+        /// <param name="StartPoint"></param>
+        /// <param name="EndPoint"></param>
+        /// <returns></returns>
         public List<int> intervals(int StartPoint, int EndPoint)
         {
             return intervalboxes(StartPoint, EndPoint, this.RootNodeIndex);
         }
 
-        public List<int> intervalboxes(int StartPoint, int EndPoint, int nodeindex)
+        private List<int> intervalboxes(int StartPoint, int EndPoint, int nodeindex)
         {//todo这里的顺序要调整，尽量做到从左向右
             List<int> result = new List<int>();
             if (nodeindex == -1 || this.nodes[nodeindex].maxEinSubtree < StartPoint)
@@ -515,7 +730,7 @@ namespace IPRulesRegulater
             }
         }
 
-        public void modifyLvalue(int nodeindex)
+        private void modifyLvalue(int nodeindex)
         {
             int checkpoint = nodeindex;
             
@@ -625,13 +840,51 @@ namespace IPRulesRegulater
 
         }
 
-        public int changeStartPoint(int boxindex, int nodeindex, int changeto, int endpoint)
+        private void checkvalue(int nodeindex)
+        {
+            //todo这里加入检查，如果点空了该咋办。两个都要做就一并做了吧
+            int maxE = 0;
+            foreach (int k in this.nodes[nodeindex].Boxes.Keys)
+                if (this.nodes[nodeindex].Boxes[k] > maxE)
+                    maxE = this.nodes[nodeindex].Boxes[k];
+            this.nodes[nodeindex].maxE = maxE;
+            this.nodes[nodeindex].maxEinSubtree = maxE;
+            if (this.nodes[nodeindex].ToLeft > 0)
+                this.nodes[nodeindex].maxEinSubtree = Math.Max(this.nodes[this.nodes[nodeindex].ToLeft].maxEinSubtree, maxE);
+            if (this.nodes[nodeindex].ToRight > 0)
+                this.nodes[nodeindex].maxEinSubtree = Math.Max(this.nodes[this.nodes[nodeindex].ToRight].maxEinSubtree, this.nodes[nodeindex].maxEinSubtree);
+        }
+
+        /// <summary>
+        /// 用于改变一个线段的起始时。
+        /// </summary>
+        /// <param name="boxindex"></param>
+        /// <param name="nodeindex"></param>
+        /// <param name="changeto"></param>
+        /// <returns></returns>
+        public int changeStartPoint(int boxindex, int nodeindex, int changeto)
         {
             int newnodeindex = -1;
+            int endpoint = this.nodes[nodeindex].Boxes.First(b => b.Key == boxindex).Value;
             this.nodes[nodeindex].Boxes.Remove(boxindex);
+            checkvalue(nodeindex);
             //todo if node 空了要删除它
             addnode(changeto, endpoint, boxindex, out newnodeindex);
+            
             return newnodeindex;
+        }
+
+        /// <summary>
+        /// 用于改变一个线段的重点。
+        /// </summary>
+        /// <param name="boxindex"></param>
+        /// <param name="nodeindex"></param>
+        /// <param name="changeto"></param>
+        public void changeEndPoint(int boxindex, int nodeindex, int changeto)
+        {
+            this.nodes[nodeindex].Boxes.Remove(boxindex);
+            this.nodes[nodeindex].Boxes.Add(boxindex, changeto);
+            checkvalue(nodeindex);
         }
 
         public class ETreeNode
@@ -679,9 +932,15 @@ namespace IPRulesRegulater
             }
         }
 
+        /// <summary>
+        /// 找到从该点开始往后续的那些规则
+        /// </summary>
+        /// <param name="endpoint"></param>
+        /// <returns></returns>
         public List<int> connectedrecs(int endpoint)
         {
-            return connectedrecs(0, endpoint);
+            if (this.RootNodeIndex == -1) return null;
+            return connectedrecs(this.RootNodeIndex, endpoint+1);
         }
 
         private List<int> connectedrecs(int index, int endpoint)
@@ -695,7 +954,4 @@ namespace IPRulesRegulater
             return new List<int>();
         }
     }
-
-
-
 }
