@@ -67,7 +67,11 @@ def generateRules(num):
 	df = pd.DataFrame(result)
 	df.to_csv('test.csv')
 
+	# with open('rules.json', 'w') as outfile:  
+	# 	json.dump(result, outfile)
+
 generateRules(100)
+
 
 
 
