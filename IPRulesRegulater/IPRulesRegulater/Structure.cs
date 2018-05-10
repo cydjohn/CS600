@@ -13,8 +13,19 @@ namespace IPRulesRegulater
         public IP EndIP;
         public IPRange(string IPString)
         {
-            this.StartIP = new IP(IPString.Replace("*", "0"));
-            this.EndIP = new IP(IPString.Replace("*", "255"));
+            //this.StartIP = new IP(IPString.Replace("*", "0"));
+            //this.EndIP = new IP(IPString.Replace("*", "255"));
+            if (IPString.Contains("-"))
+            {
+                string[] sp = IPString.Split('-');
+                this.StartIP = new IP(sp[0]);
+                this.EndIP = new IP(sp[1]);
+            }
+            else
+            {
+                this.StartIP = new IP(IPString);
+                this.EndIP = new IP(IPString);
+            }
         }
 
         public IPRange(int StartIPNum, int EndIPNum)
@@ -70,7 +81,7 @@ namespace IPRulesRegulater
             }
             public int toInt()
             {
-                int re = ((this.F * 256 + this.S) * 256 + this.T) * 256 + this.L;
+                int re = (((this.F-128) * 256 + this.S) * 256 + this.T) * 256 + this.L;
                 return re;//todo添加转换规则，将一个IP地址换为坐标中的一个数字。还需要把slash编进去
             }
 
@@ -110,6 +121,15 @@ namespace IPRulesRegulater
             this.Allowed = allowed;
         }
 
+        public string tostring()
+        {
+            string result = "";
+            result += SourceIPRange.StartIP.F.ToString() + "." + SourceIPRange.StartIP.S.ToString() + "." + SourceIPRange.StartIP.T.ToString() + "." + SourceIPRange.StartIP.L.ToString() + "-";
+            result += SourceIPRange.EndIP.F.ToString() + "." + SourceIPRange.EndIP.S.ToString() + "." + SourceIPRange.EndIP.T.ToString() + "." + SourceIPRange.EndIP.L.ToString();
+            result += Allowed.ToString();
+            return result;
+        }
+
     }
 
     class Box
@@ -120,11 +140,11 @@ namespace IPRulesRegulater
 
         private  ETREE ReverseSourceIPTree;
 
-        private ETREE DestIPTree;//todo 不用public吧
+        private ETREE DestIPTree;
 
-        public void AddRule(rule newrule, int boxindex = 0, bool ischecking = false)
+        public void AddRule(rule newrule, out bool redundant)
         {
-
+            redundant = false;
             int SS = newrule.SourceIPRange.StartIP.toInt();
             int SE = newrule.SourceIPRange.EndIP.toInt();
             int DS = newrule.DestIPRange.StartIP.toInt();
@@ -137,7 +157,11 @@ namespace IPRulesRegulater
 
             //一一调整校对，得出需要添加的裂解的box，以及哪些需要留观后效
             ruledivider Newrules = ChecktheseBoxes(Intervaled, SS, SE, DS, DE);
-
+            if (Newrules.finishedrecs == null || Newrules.finishedrecs.Count() == 0)
+            {
+                redundant = true;
+                return;
+            }
             //对每一个，分情况加载
             foreach(rec r in Newrules.finishedrecs)
             AddDistinctRules(r, newrule.Allowed);
@@ -148,7 +172,8 @@ namespace IPRulesRegulater
         {
             savedrule newr = new savedrule(SS, SE, DS, DE, allowed, this.savedrules.Count());
             int index = -1;
-            List<int> exrules = SourceIPTree.connectedrecs(SE);
+            List<int> exrules = SourceIPTree.connectedrecs(SS);
+            
             if (exrules != null)
             {
                 int u = -1;
@@ -201,7 +226,7 @@ namespace IPRulesRegulater
             }
             if ((toright != null && toright.Count() != 0) && (toleft != null && toleft.Count() != 0))
             {
-                //todosides 需要填充，左右都有东西的时候该怎么办
+                
                 //第一步，分裂成一条一条的，把四角做好
 
                 List<templine> tl = new List<templine>();
@@ -251,117 +276,113 @@ namespace IPRulesRegulater
                     tl.Add(new templine(savedrules[toright[0]].DS, r.DS - 1, 3, r.SE+1, savedrules[toright[0]].SE));
                 if (savedrules[toright.Last(t => true)].DE > r.DE)
                     tl.Add(new templine(r.DE + 1, savedrules[toright.Last(t => true)].DE, 3, r.SE + 1, savedrules[toright.Last(t => true)].SE));
-
+                //去掉所有已存的，加入所有新加的
+                foreach (int i in toleft)
+                    delete(i);
+                foreach (int i in toright)
+                    delete(i);
+                foreach (templine t in tl)
+                    AddRule(t.left, t.right, t.start, t.end, allowed);
                 return;
             }
             #region ifhaverightneighbor
             if (toright != null && toright.Count() != 0)
             {//仅右侧有可续规则时怎么办todo如果右侧只有一条包住它的大规则该么办
-                int upperone = -1;
-                int lowerone = -1;
-                int uppercheckpoint = r.DE;
-                int lowercheckpoint = r.DS;
+                if (toright.Count() == 1 && savedrules[toright[0]].SS < r.SS && savedrules[toright[0]].SE > r.SE)
+                {
+                    int tempDE = savedrules[toright[0]].DE;
+                    int tempSE = savedrules[toright[0]].SE;
+                    changeDE(toright[0], r.DS - 1);
+                    AddRule(r.SS, tempSE, r.DS, r.DE, allowed);
+                    AddRule(r.SE + 1, tempSE, r.DE + 1, tempDE, allowed);
+                    return;
+                }
+
+                List<templine> tl = new List<templine>();
                 foreach (int i in toright)
+                    tl.Add(new templine(Math.Max(r.DS, this.savedrules[i].DS), Math.Min(r.DE, this.savedrules[i].DE), 3, r.SS, savedrules[i].SE));
+                tl = tl.OrderBy(t => t.start).ToList();
+                List<templine> ntl = new List<templine>();
+                if (tl[0].start > r.DS)
+                    ntl.Add(new templine(r.DS, tl[0].start - 1, 3, r.SS, r.SE));
+                for (int i = 1; i < tl.Count(); i++)
+                    if (tl[i].start - tl[i - 1].end > 1)
+                        ntl.Add(new templine(tl[i - 1].end + 1, tl[i].start - 1, 3, r.SS, r.SE));
+                if (tl.Last(t => true).end < r.DE)
+                    ntl.Add(new templine(tl.Last(t => true).end + 1, r.DE, 3, r.SS, r.SE));
+                tl.AddRange(ntl);
+                tl = tl.OrderBy(t => t.start).ToList();
+
+                if (savedrules[toright[0]].DS < r.DS)
                 {
-                    if (this.savedrules[i].DE >= r.DE)
-                        upperone = i;
-                    if (this.savedrules[i].DS <= r.DS)
-                        lowerone = i;
+                    AddRule(r.SS, savedrules[toright[0]].SE, r.DS, savedrules[toright[0]].DE, allowed);
+                    changeDE(toright[0], r.DS - 1);
                 }
-
-                if (upperone != -1)
+                if (savedrules[toright.Last(t => true)].DE > r.DE)
                 {
-                    uppercheckpoint = this.savedrules[upperone].DS - 1;
-                    if (this.savedrules[upperone].DS > r.DS)
-                    {
-                        this.savedrules[upperone].DS = r.DE + 1;
-                        this.savedrules[upperone].DestIPTIndex = DestIPTree.changeStartPoint(this.savedrules[upperone].index, this.savedrules[upperone].DestIPTIndex, r.DS + 1);
-                    }
-                    else
-                        delete(upperone);
-                    AddRule(r.SS, this.savedrules[upperone].SE, uppercheckpoint + 1, r.DE, allowed);
+                    AddRule(r.SS, savedrules[toright.Last(t => true)].SE, savedrules[toright.Last(t => true)].DS, r.DE, allowed);
+                    changeDS(toright.Last(t => true), r.DE + 1);
                 }
-
-                if (lowerone != -1)
+                foreach (templine t in tl)
                 {
-                    lowercheckpoint = this.savedrules[lowerone].DE + 1;
-                    if (this.savedrules[lowerone].DS < r.DS)
-                    {
-                        this.savedrules[lowerone].DE = r.DS - 1;
-                        DestIPTree.changeEndPoint(lowerone, this.savedrules[lowerone].DestIPTIndex, r.DS - 1);
-                    }
-                    else
-                        delete(lowerone);
-                    AddRule(r.SS, this.savedrules[lowerone].SE, r.DS, lowercheckpoint - 1, allowed);
+                    if (t.right == r.SE)
+                        AddRule(r.SS, r.SE, t.start, t.end, allowed);
                 }
-
-                List<line> linesegs = new List<line>();
-                linesegs.Add(new line(lowercheckpoint, uppercheckpoint));
-
                 foreach (int i in toright)
-                {
-                    if (i == lowerone || i == upperone) continue;
-                    int a = this.savedrules[i].DS;
-                    int b = this.savedrules[i].DE;
-                    int tempindex = -1;
-                    for (int tempi = 1; tempi < linesegs.Count(); tempi++)
-                        if (linesegs[tempi].startpoint <= a && linesegs[tempi].endpoint >= b)
-                            tempindex = tempi;
-                    if (linesegs[tempindex].startpoint < a)
-                        linesegs.Add(new line(linesegs[tempindex].startpoint, a - 1));
-                    if (linesegs[tempindex].endpoint > b)
-                        linesegs.Add(new line(b + 1, linesegs[tempindex].endpoint));
-                    linesegs.RemoveAt(tempindex);
-                    AddRule(r.SS, this.savedrules[i].SE, a, b, allowed);
-                    delete(i);
-                }
-                foreach (line l in linesegs)
-                    AddRule(r.SS, r.SE, l.startpoint, l.endpoint, allowed);
+                    if (this.savedrules[i].DS >= r.DS && this.savedrules[i].DE <= r.DE)
+                        changeSS(i, r.SS);
+                
                 return;
             }
             #endregion ifhaverightneighbor
 
             #region ifhaveleftneighbor
             if (toleft != null && toleft.Count() != 0)
-            {
-                int i = 0;
-                int ScanLine = r.DS;
-                //检查第一个是否会越界，ds低于r的ds
-                if (savedrules[toleft[i]].DS < r.DS)
+            {//todo需要进行逻辑上的检查，判断有没有“如果左边有一个大的，上下全包的，该咋办”
+                if (toleft.Count() == 1 && savedrules[toleft[0]].SS < r.SS && savedrules[toleft[0]].SE > r.SE)
                 {
-                    changeDE(toleft[i], r.DS - 1);
-                    AddRule(savedrules[toleft[i]].SS, r.SE, r.DS, savedrules[toleft[i]].DE, allowed);
-                    i++;
-                    ScanLine = savedrules[toleft[i]].DE+1;
+                    int tempDE = savedrules[toleft[0]].DE;
+                    int tempSS = savedrules[toleft[0]].SS;
+                    changeDE(toleft[0], r.DS - 1);
+                    AddRule(tempSS, r.SE, r.DS, r.DE, allowed);
+                    AddRule(tempSS, r.SS-1, r.DE + 1, tempDE, allowed);
+                    return;
                 }
-                //对中间的，先弄gap里的，再弄共存的
-                while (i<toleft.Count() && savedrules[toleft[i]].DE<=r.DE)
+
+                List<templine> tl = new List<templine>();
+                foreach (int i in toleft)
+                    tl.Add(new templine(Math.Max(r.DS, this.savedrules[i].DS), Math.Min(r.DE, this.savedrules[i].DE), 1, savedrules[i].SS, r.SE));
+                tl = tl.OrderBy(t => t.start).ToList();
+                List<templine> ntl = new List<templine>();
+                if (tl[0].start > r.DS)
+                    ntl.Add(new templine(r.DS, tl[0].start - 1, 2, r.SS, r.SE));
+                for (int i = 1; i < tl.Count(); i++)
+                    if (tl[i].start - tl[i - 1].end > 1)
+                        ntl.Add(new templine(tl[i - 1].end + 1, tl[i].start - 1, 2, r.SS, r.SE));
+                if (tl.Last(t => true).end < r.DE)
+                    ntl.Add(new templine(tl.Last(t => true).end + 1, r.DE, 2, r.SS, r.SE));
+                tl.AddRange(ntl);
+                tl = tl.OrderBy(t => t.start).ToList();
+
+                if (savedrules[toleft[0]].DS < r.DS)
                 {
-                    if(savedrules[toleft[i]].DS> ScanLine)
-                    {
-                        AddRule(r.SS, r.SE, ScanLine, savedrules[i].DS - 1, allowed);
-                        ScanLine = savedrules[toleft[i]].DS;
-                    }
-                    changeSE(toleft[i], r.SE);
-                    i++;
-                    ScanLine = savedrules[toleft[i]].DE+1;
+                    AddRule(savedrules[toleft[0]].SS, r.SE, r.DS, savedrules[toleft[0]].DE, allowed);
+                    changeDE(toleft[0], r.DS - 1);
                 }
-                //如果没有超界的就算了
-                if (ScanLine > r.DE) return;
-                if (i == toleft.Count() - 1)
+                if (savedrules[toleft.Last(t => true)].DE > r.DE)
                 {
-                    AddRule(r.SS, r.SE, ScanLine, r.DE, allowed);
+                    AddRule(savedrules[toleft.Last(t => true)].SS, r.SE, savedrules[toleft.Last(t => true)].DS, r.DE, allowed);
+                    changeDS(toleft.Last(t => true), r.DE + 1);
                 }
-                else
+                foreach (templine t in tl)
                 {
-                    if (savedrules[toleft[i]].DS > ScanLine)
-                    {
-                        AddRule(r.SS, r.SE, ScanLine, savedrules[i].DS - 1, allowed);
-                        ScanLine = savedrules[toleft[i]].DS;
-                    }
-                    AddRule(savedrules[toleft[i]].SS, r.SE, ScanLine, r.DE, allowed);
-                    changeDS(toleft[i], r.DE + 1);
+                    if (t.left == r.SS)
+                        AddRule(r.SS, r.SE, t.start, t.end, allowed);
                 }
+                foreach (int i in toleft)
+                    if (this.savedrules[i].DS >= r.DS && this.savedrules[i].DE <= r.DE)
+                        changeSE(i, r.SE);
+
                 return;
             }
             #endregion ifhaveleftneighbor
@@ -418,7 +439,7 @@ namespace IPRulesRegulater
 
         private void delete(int index)
         {
-            int last = this.savedrules.Count();
+            int last = this.savedrules.Count() - 1;
             while (this.savedrules[last].empty)
             {
                 SourceIPTree.nodes[this.savedrules[last].SourceIPTIndex].Boxes.Remove(last);
@@ -593,6 +614,12 @@ namespace IPRulesRegulater
                 this.DE = DE;
 
             }
+
+            public override string ToString()
+            {
+                return string.Format("SS: {0} SE: {1} DS: {2} DE: {3}", SS,ToString(), SE.ToString(), DS,ToString(), DE.ToString());
+            }
+
 
 
         }
