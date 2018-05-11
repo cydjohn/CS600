@@ -126,8 +126,14 @@ namespace IPRulesRegulater
             string result = "";
             result += SourceIPRange.StartIP.F.ToString() + "." + SourceIPRange.StartIP.S.ToString() + "." + SourceIPRange.StartIP.T.ToString() + "." + SourceIPRange.StartIP.L.ToString() + "-";
             result += SourceIPRange.EndIP.F.ToString() + "." + SourceIPRange.EndIP.S.ToString() + "." + SourceIPRange.EndIP.T.ToString() + "." + SourceIPRange.EndIP.L.ToString();
-            result += Allowed.ToString();
+            result += ", ";
+            result += DestIPRange.StartIP.F.ToString() + "." + DestIPRange.StartIP.S.ToString() + "." + DestIPRange.StartIP.T.ToString() + "." + DestIPRange.StartIP.L.ToString() + "-";
+            result += DestIPRange.EndIP.F.ToString() + "." + DestIPRange.EndIP.S.ToString() + "." + DestIPRange.EndIP.T.ToString() + "." + DestIPRange.EndIP.L.ToString();
+            result += ",";
+            if (Allowed) result += "ALLOW";
+            else result += "DENY";
             return result;
+
         }
 
     }

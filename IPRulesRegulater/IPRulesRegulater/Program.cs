@@ -14,7 +14,9 @@ namespace IPRulesRegulater
             //AddRule();
             //test();
             //nievtest();
-            burttest();
+            List<rect> A = burttestA();
+            List<rect> B = burttestB();
+            compareAB(A, B);
         }
 
         public static void AddRule()//rule newrule)
@@ -90,7 +92,7 @@ namespace IPRulesRegulater
             }
         }
 
-        public static void burttest()
+        public static List<rect> burttestB()
         {
             List<rule> rules = new List<rule>();
             string[] testlinesB = File.ReadAllLines(Path.Combine(Directory.GetCurrentDirectory(), "RuleSetB.csv"), Encoding.Default);
@@ -125,7 +127,230 @@ namespace IPRulesRegulater
                 cleanedB.Add(r.torulestring());
             File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "CleanedB.txt"), cleanedB.ToArray(), Encoding.Default);
 
+            return finrules;
         }
+        public static List<rect> burttestA()
+        {
+            List<rule> rules = new List<rule>();
+            string[] testlinesB = File.ReadAllLines(Path.Combine(Directory.GetCurrentDirectory(), "RuleSetA.csv"), Encoding.Default);
+            foreach (string s in testlinesB)
+            {
+                string[] sp = s.Split(',');
+                rules.Add(new rule(sp[0], sp[1], sp[2]));
+            }
+            List<rect> finrules = new List<rect>();
+            int i = 1;
+            List<int> redundant = new List<int>();
+            foreach (rule nr in rules)
+            {
+                List<rect> nrs = new List<rect>();
+                nrs.Add(new rect(nr.SourceIPRange.StartIP.toInt(), nr.SourceIPRange.EndIP.toInt(), nr.DestIPRange.StartIP.toInt(), nr.DestIPRange.EndIP.toInt(), nr.Allowed));
+                foreach (rect r in finrules)
+                {
+                    //这是一个已存在的r与新加入的组nrs的兼并方案
+                    nrs = Combine(r, nrs);
+                }
+                finrules.AddRange(nrs);
+                if (nrs.Count() == 0)
+                    redundant.Add(i);
+                i++;
+            }
+            List<string> red = new List<string>();
+            foreach (int j in redundant)
+                red.Add(j.ToString() + "," + rules[j - 1].tostring());
+            File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "RedA.txt"), red.ToArray(), Encoding.Default);
+            List<string> cleanedB = new List<string>();
+            foreach (rect r in finrules)
+                cleanedB.Add(r.torulestring());
+            File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "CleanedA.txt"), cleanedB.ToArray(), Encoding.Default);
+
+            return finrules;
+        }
+
+        public static void compareAB(List<rect> A, List<rect> B)
+        {
+            List<rect> cA = new List<rect>();
+            List<rect> cB = new List<rect>();
+            foreach (rect r in A)
+                if (!AhasB(B,r))
+                    cA.Add(r);
+            foreach (rect r in B)
+                if (!AhasB(A,r))
+                    cB.Add(r);
+            List<rect> AA = cA.Where(a => a.allowed).ToList();
+            List<rect> AD = cA.Where(a => !a.allowed).ToList();
+            List<rect> BA = cB.Where(a => a.allowed).ToList();
+            List<rect> BD = cB.Where(a => !a.allowed).ToList();
+
+            List<string> result = new List<string>();
+            foreach (rect a in cA)
+                result.Add(a.torulestring());
+            File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "Rule_inAagainstB.txt"), result.ToArray(), Encoding.Default);
+            result = new List<string>();
+            foreach (rect a in cB)
+                result.Add(a.torulestring());
+            File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "Rule_inBagainstA.txt"), result.ToArray(), Encoding.Default);
+
+        }
+
+        public static bool AhasB(List<rect>A, rect b)
+        {
+            List<rect> nbs = new List<rect>();
+            nbs.Add(b);
+            foreach(rect r in A)
+            {
+                nbs = ahasb(r, nbs, b.allowed);
+            }
+
+            bool result = (nbs.Count() == 0);
+
+            return result;
+        }
+
+        public static List<rect> ahasb(rect r, List<rect> nrs, bool allowed)
+        {
+            List<rect> result = new List<rect>();
+            if (r.allowed != allowed) return nrs;
+            foreach (rect nr in nrs)
+            {
+                if (nr.SS > r.SE || nr.SE < r.SS || nr.DS > r.DE || nr.DE < r.DS)
+                {
+                    result.Add(nr);
+                    continue;
+                }
+                if (nr.SS < r.SS)
+                {
+                    #region 第一层
+                    if (nr.SE <= r.SE)
+                    {
+                        if (nr.DS < r.DS)
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(nr.SS, r.SS - 1, r.DS, nr.DE, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(nr.SS, r.SS - 1, r.DS, r.DE, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                        else
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(nr.SS, r.SS - 1, nr.DS, nr.DE, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, r.SS - 1, nr.DS, r.DE, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (nr.DS < r.DS)
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(nr.SS, r.SS - 1, r.DS, nr.DE, nr.allowed));
+                                result.Add(new rect(r.SE + 1, nr.SE, r.DS, nr.DE, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(nr.SS, r.SS - 1, r.DS, r.DE, nr.allowed));
+                                result.Add(new rect(r.SE + 1, nr.SE, r.DS, r.DE, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                        else
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(nr.SS, r.SS - 1, nr.DS, nr.DE, nr.allowed));
+                                result.Add(new rect(r.SE + 1, nr.SE, nr.DS, nr.DE, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, r.SS - 1, nr.DS, r.DE, nr.allowed));
+                                result.Add(new rect(r.SE + 1, nr.SE, nr.DS, r.DE, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                    }
+                    #endregion 第一层
+                }
+                else
+                {
+                    #region 第二层
+                    if (nr.SE <= r.SE)
+                    {
+                        if (nr.DS < r.DS)
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                        else
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                ;
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (nr.DS < r.DS)
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(r.SE + 1, nr.SE, r.DS, nr.DE, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(nr.SS, nr.SE, nr.DS, r.DS - 1, nr.allowed));
+                                result.Add(new rect(r.SE + 1, nr.SE, r.DS, r.DE, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                        else
+                        {
+                            if (nr.DE <= r.DE)
+                            {
+                                result.Add(new rect(r.SE + 1, nr.SE, nr.DS, nr.DE, nr.allowed));
+                            }
+                            else
+                            {
+                                result.Add(new rect(r.SE + 1, nr.SE, nr.DS, r.DE, nr.allowed));
+                                result.Add(new rect(nr.SS, nr.SE, r.DE + 1, nr.DE, nr.allowed));
+                            }
+                        }
+                    }
+                    #endregion 第二层
+                }
+
+            }
+
+            return result;
+        }
+
 
         public static List<rect> Combine(rect r, List<rect> nrs)
         {
@@ -287,12 +512,28 @@ namespace IPRulesRegulater
             public string torulestring()
             {
                 string result = "";
-                result += this.SS.ToString() + "~" + this.SE.ToString() + "," + this.DS.ToString() + "~" + this.DE.ToString() + ",";
+                result += numstring(this.SS) + "-" + numstring(this.SE) + "," + numstring(this.DS) + "-" + numstring(this.DE) + ",";
                 if (this.allowed)
                     result = result + "Allow";
                 else
                     result = result + "Deny";
                 return result;
+            }
+            public string numstring(int SS)
+            {
+                bool neg = false;
+                if (SS < 0) neg = true;
+
+                if (neg) SS = SS - (-2147483648);
+                int F = SS / 16777216;
+                SS = SS - F * 16777216;
+                int S = SS / 65536;
+                SS = SS - S * 65536;
+                int T = SS / 256;
+                SS = SS - T * 256;
+                int L = SS;
+
+                return F.ToString()+"."+S.ToString()+"."+T.ToString()+"."+L.ToString();
             }
         }
 
