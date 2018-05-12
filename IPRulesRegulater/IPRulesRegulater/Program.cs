@@ -183,6 +183,7 @@ namespace IPRulesRegulater
             List<rect> BD = cB.Where(a => !a.allowed).ToList();
 
             List<string> result = new List<string>();
+            cA = cA.OrderBy(c => c.SS).ThenBy(c => c.DS).ToList();
             foreach (rect a in cA)
                 result.Add(a.torulestring());
             File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "Rule_inAagainstB.txt"), result.ToArray(), Encoding.Default);
@@ -190,6 +191,29 @@ namespace IPRulesRegulater
             foreach (rect a in cB)
                 result.Add(a.torulestring());
             File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "Rule_inBagainstA.txt"), result.ToArray(), Encoding.Default);
+
+
+            List<rect> merged = Merge(cA);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            merged = Merge(merged);
+            result = new List<string>();
+            foreach (rect a in merged)
+                result.Add(a.torulestring());
+            File.WriteAllLines(Path.Combine(Directory.GetCurrentDirectory(), "merged.txt"), result.ToArray(), Encoding.Default);
+
 
         }
 
@@ -492,6 +516,44 @@ namespace IPRulesRegulater
 
             }
             return result;
+        }
+
+        public static List<rect> Merge(List<rect> oldrects)
+        {
+            List<rect> nrects=new List<rect>();
+            nrects.AddRange(oldrects);
+            List<int> jump = new List<int>();
+            for (int i = 0; i < nrects.Count(); i++)
+            {
+                for(int j = i+1;j<nrects.Count();j++)
+                {
+                    if (nrects[j].SS == nrects[i].SS && nrects[j].SE == nrects[i].SE)
+                        if (nrects[j].DS > nrects[i].DE && nrects[j].DS == nrects[i].DE + 1)
+                        {
+                            nrects[i].DE = nrects[j].DE;
+                            nrects.RemoveAt(j);
+                        }
+                    else if(nrects[j].DE<nrects[i].DS && nrects[j].DE == nrects[i].DS-1)
+                        {
+                            nrects[i].DS = nrects[j].DS;
+                            nrects.RemoveAt(j);
+                        }
+                    if (nrects.Count() == j) break;
+                    if(nrects[j].DS == nrects[i].DS && nrects[j].DE == nrects[i].DE)
+                        if(nrects[j].SS>nrects[i].SE && nrects[j].SS == nrects[i].SE+1)
+                        {
+                            nrects[i].SE = nrects[j].SE;
+                            nrects.RemoveAt(j);
+                        }
+                    else if(nrects[j].SE<nrects[i].SS && nrects[j].SE == nrects[i].SS-1)
+                        {
+                            nrects[i].SS = nrects[j].SS;
+                            nrects.RemoveAt(j);
+                        }
+
+                }
+            }
+            return nrects;
         }
 
         public class rect
