@@ -42,5 +42,13 @@ def translateToCSV(fileName):
 	result2.to_csv(fileName+"Plus.csv")
 
 
-translateToCSV("RuleSetA")
-translateToCSV("RuleSetB")
+def translateToSlashIp(fileName):
+	df = pd.read_csv(fileName+".txt")
+	result = []
+	for row in range(0,len(df)):
+		result.append({"sourceIP":IP(df["sourceIP"][row],make_net=1),"destIP":IP(df["destIP"][row],make_net=1),"action":df["action"][row]})
+		# result.append({"index":df["index"][row],"sourceIP":IP(df["sourceIP"][row]),"destIP":IP(df["destIP"][row]),"action":df["action"][row]})
+	pd.DataFrame(result).to_csv(fileName+".csv")
+
+translateToSlashIp("Rule_inAagainstB")
+
